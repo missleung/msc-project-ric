@@ -1,0 +1,102 @@
+---
+title: "Simulation_cide_RIC_poisson"
+author: "Lisa Leung"
+date: '2018-01-06'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r library}
+library(DescTools)
+library(data.table)
+```
+
+
+```{r RIC_curve}
+RIC_curve <- function(mat, marker, benefit){
+  
+  proportion <- seq(0, 1, by = 0.01)
+  
+  #Finding marker values by creating a new data set with trt = 0....
+  no_trt_data <- as.data.frame(cbind(mat[,!names(mat) %in% trt], trt = 0))
+  colnames(no_trt_data)[colnames(no_trt_data) == 'trt'] <- trt
+  trt<-"trt"
+  #Construct marker values when trt = 0
+  marker <- predict(lm1, newdata = no_trt_data)
+  
+  #Creating data set that has all trt variable as 1
+  all_trt_data <- as.data.frame(cbind(mat[,!names(mat) %in% trt], trt = 1))
+  colnames(all_trt_data)[colnames(all_trt_data) == 'trt'] <- trt
+  
+  #Construct marker values when trt = 0
+  y_all_trt <- predict(lm1, newdata = all_trt_data)
+
+  #Grabbing biomarker threshold such that it matches the proportion, in this case, our biomarker is y_no_trt
+  k <- quantile(marker, probs = 1 - proportion)
+  
+  #Creating treatment vectors such that patients are assigned to treatment if biomarker is greater than threshold
+  new_trt <- sapply(k, function (x) as.numeric(marker > x))
+  
+  #relative benefit
+  b1 = apply(new_trt, 2, function(x) sum((y_all_trt - y_no_trt)*x)/
+               sum(y_all_trt - y_no_trt))
+  
+  #return the vector of relative benefit
+  b1
+  
+}
+
+```
+##SIMULATION: Will return a vector of AUCs
+
+auc_vec: returns a vector of AUC
+x1 and x2: covariates
+e: normally distributed errors
+trt: assume that treatment was randomly assigned (for original data, we don't know our treatment yet before the biomarker values)
+bio: biomarkers
+ben: beneficial values after treatment
+y:poisson outcome (not necessarily biomarker values OR beneficial values!!)
+mat1: dataframe including covariates, treatment, and outcome y
+
+```{r initialize}
+n = 100
+int <- 0.5
+b1 <- 2
+b2 <- 3.5
+b3 <- 2
+b4 <- 5
+```
+
+```{r simulation}
+auc_vec<-c()
+i=1
+for (i in 1: 1000){
+
+set.seed(i)
+x1 <- runif(n, 0, 10)
+x2 <- rnorm(n, 10, 6)
+trt <- rbinom(n, size=1, prob=0.5)
+bio <- rpois(n, b1*x1 + b2*x2)
+ben <- rpois(n, b3*trt + I(b4*trt*x2))
+y <- rpois(n, int + b1*x1 + b2*x2 + b3*trt + I(b4*trt*x2))
+mat1 = data.frame(x1=x1, x2=x2, trt=trt, y=y)
+
+##According to the case study, they first found a model including the treatment assignment and the clinical variables. 
+#This is labeled as a "Q model"
+
+#Poisson
+glm1 <- glm(y ~ x1 + x2 + trt + I(trt*x2), family = "poisson", data=mat1)
+
+#CALCULATING AUC
+ric_y <- RIC_exp(ric_x, mat1, 'trt', 'y', lm1)
+auc_vec <- append(auc_vec, AUC(ric_x,ric_y))
+
+cat("Done:", i,"\n")
+}
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

@@ -1,0 +1,108 @@
+---
+title: "pbc_ric"
+author: "Lisa Leung"
+date: '2018-01-20'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Treatment is 	1/2/NA for D-penicillmain, placebo, not randomised
+
+Predicting survival in PBC patients is important for clinical decision making. The
+investigators collected data on age as well as baseline laboratory values and clinical
+signs including serum bilirubin levels, enlargement of the liver (hepatomegaly),
+accumulation of water in the legs (edema), and visible veins in the chest and
+shoulders (spiders)—all signs of liver damage.
+
+##only bili (serum bilirunbin) is a continuous variable to measure the disease progress
+
+id:	case number
+age:	in years
+sex:	m/f
+trt:	1/2/NA for D-penicillmain, placebo, not randomised
+time:	number of days between registration and the earlier of death,
+transplantion, or study analysis in July, 1986
+status:	status at endpoint, 0/1/2 for censored, transplant, dead
+day:	number of days between enrollment and this visit date
+
+all measurements below refer to this date
+
+albumin:	serum albumin (mg/dl)
+alk.phos:	alkaline phosphotase (U/liter)
+ascites:	presence of ascites
+ast:	aspartate aminotransferase, once called SGOT (U/ml)
+bili:	serum bilirunbin (mg/dl)
+chol:	serum cholesterol (mg/dl)
+copper:	urine copper (ug/day)
+edema:	0 no edema, 0.5 untreated or successfully treated
+1 edema despite diuretic therapy
+hepato:	presence of hepatomegaly or enlarged liver
+platelet:	platelet count
+protime:	standardised blood clotting time
+spiders:	blood vessel malformations in the skin
+stage:	histologic stage of disease (needs biopsy)
+trig:	triglycerides (mg/dl)
+
+```{r pbc}
+#https://stat.ethz.ch/R-manual/R-devel/library/survival/html/pbcseq.html
+library(survival)
+library(tidyverse)
+pbcseq
+summary(pbcseq$day)
+dim(na.omit(pbcseq))
+dim(pbcseq)
+
+table(pbcseq$status)
+
+data <- pbcseq
+
+data$trt <- as.factor(data$trt)
+data$status <- as.factor(data$status)
+data$hepato <- as.factor(data$hepato)
+data$edema <- as.factor(data$edema)
+
+latest_date <- data %>% group_by(id) %>% summarise(max_day=max(day))
+last_data <- left_join(latest_date, data, by = c("id"="id","max_day"="day"))
+
+no_0_data <- last_data[last_data$max_day!=0,]
+no_0_data <- no_0_data[no_0_data$status!=1,]
+
+names(no_0_data)
+
+plot(no_0_data$max_day)
+plot(no_0_data$bili)
+plot(no_0_data$bili,no_0_data$max_day)
+
+table(no_0_data$trt,no_0_data$status)
+plot(no_0_data$trt,no_0_data$hepato)
+plot(no_0_data$trt,no_0_data$edema)
+
+plot(no_0_data$trt,no_0_data$bili)
+## can't seem to find anything on a dataset that only uses the very last observation on each subject....will try the slope of bilirum values on regression levels or something like that
+```
+
+```{r}
+#d<-data[data$id==100,]
+#day<-d$day
+#bili<-d$bili
+#coef(lm(bili~day))[2]
+#summary(lm(bili~day))
+
+lin_function <- function(x,y){
+  lm1 <- lm(y ~ x)
+  return(coef(lm1)[2])
+}
+
+avg_data <- data %>% group_by(id) %>% summarise(avg_bili = lin_function(day, bili), )
+last_data <- left_join(avg_data, data, by = c("id"="id"))
+last_data
+
+ok <- last_data[,names(last_data) %in% c("id", "avg_bili", "trt")] 
+do_this<-unique(ok)
+plot(do_this$trt, do_this$avg_bili)
+summary(lm(avg_bili~trt, data=do_this))
+```
+
